@@ -94,6 +94,7 @@ print("Energies in meV: ",energies)
 #Determine Principal axes of inertia----------------------------------------------------------------------------------------------
 
 #Remove constrained atoms-necessary for moving coordinate system to center of mass of unconstrained atoms.
+#NOTE: The code by Guowen Peng takes the center of mass of the entire structure.
 del atoms[atoms_constrained]
 #Obtain center of mass
 com = atoms.get_center_of_mass()
@@ -115,7 +116,56 @@ for row in range(3):
             D[row,col+row] = mass_list[col]
 
 #Generating rotating frame vectors.
+
+
+#Generating atomic coordinate array (necessary to find P- which is the dot product of the shifted atoms and the eigenvector of the moment of inertia tensor)
+coord = np.zeros((len(atoms_free),3))
+coord_mass = np.zeros((len(atoms_free),3))
+mass_list_cut = []
+
+row = 0
+for atom in atoms:
+    for col in range(3):
+        coord[row,col] = atom.position[col]
+        coord_mass[row,col] = atom.position[col]*atom.mass
+    mass_list_cut.append(atom.mass)
+    row += 1
+
 #Generating 'P', the dot product of 'R_com' (the coordinates of the atoms with respect to the center of mass) and the corresponding row of the matrix used to diagnolize the moment of inertia tensor..
-P = np.dot(I_vec,com)
-print(P)
+
+
+P = np.dot(coord_mass,I_vec)
+
+#Generate "D_4"
+D_4 = np.zeros((len(atoms_free),3))
+
+for i in range(len(D_4[:,0])):
+    for j in range(len(D_4[0,:])):
+        D_4[i,j] = (P[i,1]*I_vec[2,j]-P[i,2]*I_vec[1,j])/np.sqrt(mass_list_cut[i])
+
+#Generate "D_5"
+D_5 = np.zeros((len(atoms_free),3))
+
+for i in range(len(D_5[:,0])):
+    for j in range(len(D_5[0,:])):
+        D_5[i,j] = (P[i,2]*I_vec[0,j]-P[i,0]*I_vec[2,j])/np.sqrt(mass_list_cut[i])
+
+
+#Generate "D_6"
+D_6 = np.zeros((len(atoms_free),3))
+
+for i in range(len(D_6[:,0])):
+    for j in range(len(D_6[0,:])):
+        D_6[i,j] = (P[i,0]*I_vec[1,j]-P[i,1]*I_vec[0,j])/np.sqrt(mass_list_cut[i])
+
+#Determine the rotational and translational vectors and Normalize each Vector
+#Generate main matrix with 'D vectors'
+D_4_5_6 = np.vstack((D_4,D_5,D_6))
+D_main = np.vstack((np.transpose(D),D_4_5_6))
+
+
+print(D.shape)
+#for row in range(len(D_main[:,0])):
+    #print(np.dot(D_main[row,:],np.transpose(D_main[row,:])))
+
 #---------------------------------------------------------------------------------------------------------------------------------
