@@ -36,7 +36,9 @@ Na = constants.physical_constants['Avogadro constant']
 h = constants.physical_constants['Planck constant']
 ev = constants.physical_constants['electron volt']
 c = constants.physical_constants['speed of light in vacuum']
+amu  = constants.physical_constants['atomic mass constant']
 invcm = lightspeed/centimeter
+
 
 '''
 Subroutines and functions
@@ -70,7 +72,9 @@ def get_U0(freqs):
 This function returns the constrained atom indices, unconstrained atom indices
 and the total mass of the unconstrained atoms.
 '''
-def sort_atoms(atms):
+def sort_atoms(atms_obj):
+    atms = atms_obj.copy()
+    
     #Sort atom indices into constrained and unconstrained. 
     if len(atms._get_constraints())>0:
         const = (atms._get_constraints())[0].get_indices()
@@ -82,8 +86,13 @@ def sort_atoms(atms):
     for atom in atms:
         if atom.index in unconst:
             mass_unconst += atom.mass
-            
-    return const,unconst,mass_unconst
+     
+    #Get Moment of inertia of unconstrained atoms. (Find better way to do this!)
+    del atms[[atom.index for atom in atms if atom.index in const]]
+    I = atms.get_moments_of_inertia(vectors=False)#Units are [amu*ang**2]    
+    I *= amu[0]*((1.0e-10)**2)#Convert to [m2*kg]
+    
+    return const,unconst,mass_unconst, I
         
 
 '''
@@ -115,9 +124,22 @@ This function returns the enthalpy, heat capacity, Gibb's free energy, chemical 
 and 2D translator entropy.
 '''
 
-def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff):
+def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
+    
+    #Calculate 2D translational entropy constrained to adsorption site surface area.
     CsaZeo = 1/(2E-10*6E-10)#Surface area of zeolite-De Moor et al. 'Ads of C2-C8 n-alkanes in zeolites'
-    S2d = R[0]*((np.log((2*pi*mass*kb[0]*T/(h[0]**2))/CsaZeo))+2) # 2D Translational contribution, mol constrained to SA of zeolite.
+    S2d_t = R[0]*((np.log((2*pi*mass*kb[0]*T/(h[0]**2))/CsaZeo))+2) # 2D Translational contribution, mol constrained to SA of zeolite.
+
+    
+    #Calculate 1D & 2D & 3D rotational contribution. NOTE: must correctly identify which principal moments apply! (i.e cartwheel vs. helicopter rotations)
+    if sno == None:#Symmetry number.
+        sno = 1   
+    S3d_r = R[0]*(np.log(((8*(pi**2)*kb[0]*T/(h[0]**2))**(3/2))*np.sqrt(pi*I[0]*I[1]*I[2])/sno)+(3/2))
+    S2d_r = R[0]*((np.log((8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0]*I[1])/sno))+1)
+    S1d_r = R[0]*(np.log(np.sqrt(8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0])/sno)+(1/2))
+
+
+    #Remove translational & rotational frequencies.    
     for i,mode in enumerate(Modes_list):
         if mode == 'trans' or mode =='TST':#Set modes labelled as 'trans' to 0. They will be omitted from Svib.
             nma_obj.freqs[i] = 0
@@ -131,7 +153,7 @@ def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff):
     pf_vib = PartFun(nma_obj, [])#Construct Harmonic Oscillator partition function.
     
     Svib = pf_vib.entropy(T)*Hartree_2_Joule[0]*Na[0] # Vibrational Entropy [J/mol/K]
-    St = Svib + S2d#Total entropy
+    St = Svib + S2d_t#Total entropy
     
     '''
     Testing and Debug
@@ -174,13 +196,13 @@ Shomate parameter function allows us to estimate the enthalpy.-function 'Shomate
 The enthalpy is returned in [kJ/mol]
 
 '''    
-def get_T_corrections(T_range, freqs,Modes_list,nma_obj,T,mass,cutoff,d_points):
+def get_T_corrections(T_range, freqs,Modes_list,nma_obj,T,mass,cutoff,d_points,sno,I):
     T_arr = np.linspace(T_range[0],T_range[-1],num=d_points)#Create Temperature range.
     
     S_dat = []
     #Calculate entropy at each temperature.
     for i,T in enumerate(T_arr):
-        S_dat.append(S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff))
+        S_dat.append(S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I))
     
     #initial guess for Shomate_S parameters.
     initparam = (1,1,1,1,1,1)
@@ -218,15 +240,14 @@ if 'ads' in action:
     cutoff = 100
     T = 300.00 #Temperature
     
-    #Construst molecule object
-    mol = io.vasp.load_molecule_vasp('CONTCAR','OUTCAR')
+    #Construct molecule object TAMkin
+    mol = io.vasp.load_molecule_vasp('CONTCAR','OUTCAR')   
     
     #ASE get constrained atoms and masses.
     atoms = vasp.read_vasp('CONTCAR')
+    constrained_atom_list ,unconstrained_atom_list, unconst_mass_sum, unconst_inertia_tensor  = sort_atoms(atoms)
     
-    constrained_atom_list ,unconstrained_atom_list, unconst_mass_sum = sort_atoms(atoms)
-    
-    #Construct nma object
+    #Construct nma object TAMkin
     nma = NMA(mol,PHVA(constrained_atom_list))
     nma_HO_cutoff = replace_freq_cutoff(nma,100)#Apply cutoff. 'trans' freqs are skipped.
     
@@ -241,7 +262,7 @@ if 'ads' in action:
         Modes[0] = 'trans'
         Modes[1] = 'trans'
     
-    S = S_2D_ZSA(Modes,nma_HO_cutoff,T,unconst_mass_sum/1000/Na[0],cutoff)#Obtain entropy.
+    S = S_2D_ZSA(Modes,nma_HO_cutoff,T,unconst_mass_sum/1000/Na[0],cutoff,1,unconst_inertia_tensor)#Obtain entropy.
     
     U0, U0_ZPE = get_U0(nma_HO_cutoff.freqs)#Obtain ground state energy and ZPE corrected energy.
     
@@ -252,7 +273,7 @@ if 'ads' in action:
     Temperature_range = [10.0,350.00]#Peng's code used this range.
     data_points = 100#also used in Peng's code. 100 data points is sufficient for adequate enthalpy estimation.
     
-    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,unconst_mass_sum/1000/Na[0],cutoff,data_points)
+    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,unconst_mass_sum/1000/Na[0],cutoff,data_points,2,unconst_inertia_tensor)
     
     print('H@300 [kJ/mol] \t S@300 [J/mol/K] \t G@300 [kJ/mol]')
     print('%s %s %s' % (H,S,H-300.00*(S/1000.00)))
