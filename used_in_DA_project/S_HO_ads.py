@@ -124,20 +124,8 @@ This function returns the enthalpy, heat capacity, Gibb's free energy, chemical 
 and 2D translator entropy.
 '''
 
-def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
+def S_HO(Modes_list,nma_obj,T,cutoff):
     
-    #Calculate 2D translational entropy constrained to adsorption site surface area.
-    CsaZeo = 1/(2E-10*6E-10)#Surface area of zeolite-De Moor et al. 'Ads of C2-C8 n-alkanes in zeolites'
-    S2d_t = R[0]*((np.log((2*pi*mass*kb[0]*T/(h[0]**2))/CsaZeo))+2) # 2D Translational contribution, mol constrained to SA of zeolite.
-
-    
-    #Calculate 1D & 2D & 3D rotational contribution. NOTE: must correctly identify which principal moments apply! (i.e cartwheel vs. helicopter rotations)
-    if sno == None:#Symmetry number.
-        sno = 1   
-    S3d_r = R[0]*(np.log(((8*(pi**2)*kb[0]*T/(h[0]**2))**(3/2))*np.sqrt(pi*I[0]*I[1]*I[2])/sno)+(3/2))
-    S2d_r = R[0]*((np.log((8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0]*I[1])/sno))+1)
-    S1d_r = R[0]*(np.log(np.sqrt(8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0])/sno)+(1/2))
-
 
     #Remove translational & rotational frequencies.    
     for i,mode in enumerate(Modes_list):
@@ -153,7 +141,7 @@ def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
     pf_vib = PartFun(nma_obj, [])#Construct Harmonic Oscillator partition function.
     
     Svib = pf_vib.entropy(T)*Hartree_2_Joule[0]*Na[0] # Vibrational Entropy [J/mol/K]
-    St = Svib
+    St = Svib#Total entropy
     
     '''
     Testing and Debug
@@ -196,13 +184,13 @@ Shomate parameter function allows us to estimate the enthalpy.-function 'Shomate
 The enthalpy is returned in [kJ/mol]
 
 '''    
-def get_T_corrections(T_range, freqs,Modes_list,nma_obj,T,mass,cutoff,d_points,sno,I):
+def get_T_corrections(T_range, freqs,Modes_list,nma_obj,T,cutoff,d_points,t0,H0):
     T_arr = np.linspace(T_range[0],T_range[-1],num=d_points)#Create Temperature range.
     
     S_dat = []
     #Calculate entropy at each temperature.
     for i,T in enumerate(T_arr):
-        S_dat.append(S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I))
+        S_dat.append(S_HO(Modes_list,nma_obj,T,cutoff))
     
     #initial guess for Shomate_S parameters.
     initparam = (1,1,1,1,1,1)
@@ -215,16 +203,16 @@ def get_T_corrections(T_range, freqs,Modes_list,nma_obj,T,mass,cutoff,d_points,s
     RMSE = np.std(optimize_output.fun)
     
     #'H0' is (U0+ZPE)
-    H0 = get_U0(freqs)[-1]
+    #H0 = get_U0(freqs)[1]
     
     #append (U0+ZPE) to Shomate parameters.
     ShomatePar = [param[0],param[1],param[2],param[3],param[4],0,param[5],H0]
+
+    #if True:#Print Shomate params for comparison
+        #print(param)
     
-    if True:#Print Shomate Parameters for comparison
-        print(ShomatePar)    
- 
     #Adjust Shomate parameter[5]
-    t0 = 298.15/1000.0#Shomate reuqires this.
+    #t0 = 298.15/1000.0#Shomate reuqires this.
     ShomatePar[5] = H0-param[0]*t0-param[1]*t0**2/2-param[2]*t0**3/3-param[3]*t0**4/4+param[4]/t0
     
     #Calculate the enthalpy.
@@ -253,19 +241,38 @@ if 'ads' in action:
     #Construct nma object TAMkin
     nma = NMA(mol,PHVA(constrained_atom_list))
 
-    U0, U0_ZPE, ZPE = get_U0(nma.freqs)
-
-    nma_HO_cutoff = replace_freq_cutoff(nma,cutoff)#Apply cutoff. 'trans' freqs are skipped.
-    
-
-    pf_HO = PartFun(nma, [])
-    Svib = pf_HO.entropy(T)*Hartree_2_Joule[0]*Na[0]
-    Hvib = pf_HO.internal_heat(T)*Hartree_2_Joule[0]*Na[0]#Enthalpy [J/mol]
-    Gvib = pf_HO.free_energy(T)*Hartree_2_Joule[0]*Na[0]#Gibb's Free Energy [J/mol]
+    U0, U0_ZPE, ZPE = get_U0(nma.freqs)#Obtain ground state energy and ZPE corrected energy.
  
+    nma_HO_cutoff = replace_freq_cutoff(nma,cutoff)#Apply cutoff. 'trans' freqs are skipped.
 
-    print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol] \t S@%s [J/mol/K] \t G@%s [kJ/mol]' % (T,T,T))
-    print('%s %s %s %s %s' % (U0, ZPE, Hvib/1000,Svib,Gvib/1000))
+        
+    #organize mode types based on mode visualization.
+    Modes = len(unconstrained_atom_list)*['vib']
+    
+    if 'TST' in action:
+        Modes[0] = 'TST'
+    
+    S = S_HO(Modes,nma_HO_cutoff,T,cutoff)#Obtain entropy.
+    
+   
+    
+    '''
+    Fitting Shomate parameters to calculate enthalpy.
+    '''
+    #Here, we solve for the enthalpy of formation from zero [K] to the NIST standard state of 298.15 [K]
+    #We approximate the 0 [K] enthalpy to be at 10 [K]; at this temperature H(10 K) ~ (U0 +ZPE)  
+    Temperature_range = [10.0,300.00]#Peng's code used this range.
+    data_points = 100#also used in Peng's code. 100 data points is sufficient for adequate enthalpy estimation.
+    
+    t0 = 10 # initial reference temperature for obtaining constant "F" in [K].
+    H0 = U0_ZPE
+    RMSE_298, H_298 = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,298.15,cutoff,data_points,10/1000,U0_ZPE)
+    
+    #We now expand our temperature range to [300,1200] and use T = 298.156 [K] as our reference state.
+    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,cutoff,data_points,298.15/1000,H_298)    
+
+    print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (T,T,T))
+    print('%s %s %s %s %s' % (U0,ZPE,H,S,H-T*(S/1000.00)))
     
     
     '''
@@ -280,37 +287,3 @@ if 'ads' in action:
     #    print('%s, %s, %s %s' % (data_points, Temperature_range[-1],H,RMSE))
         
 
-if 'gas' in action:
-    T = 300.00 #Temperature
-    
-    #Construst molecule object. For periodic systems (i.e VASP), must manually disable periodicity.
-    mol_gas = io.vasp.load_molecule_vasp("CONTCAR", "OUTCAR").copy_with(periodic=False)
-    
-    #Construct NMA object. "im_threshold" determines if the molecule is linear or not. If one of the moments of inertia drops below this number, the molecule is considered to be linear.
-    nma_gas = NMA(mol_gas, Full(im_threshold=10.0))
-    
-    #Construct Partition function object. May also manually specify symmetry number. (ie.ExtRot(symmetry_number = 1im_threshold=1.0))
-    pf_gas = PartFun(nma_gas, [ExtTrans(cp=False), ExtRot(im_threshold=1.0)])
-    S_gas  = pf_gas.entropy(T)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
-   	 
-    H = pf_gas.internal_heat(T)*Hartree_2_Joule[0]*Na[0]#Enthalpy [J/mol]
-    
-    #Cp = pf_gas.heat_capacity(T)*Hartree_2_Joule[0]*Na[0]#Constant Pressure Heat Capacity [J/mol/K]
-    
-    G = pf_gas.free_energy(T)*Hartree_2_Joule[0]*Na[0]#Gibb's Free Energy [J/mol]
-    
-    #mu = pf_vib.chemical_potential(T)*Hartree_2_Joule[0]*Na[0]#Chemical Potential [J/mol]
-   
-    print('%s %s %s' % (H/1000,S_gas, G/1000))
-
-
-'''
-testing/debugging
-'''
-#nma_HO_cutoff = replace_freq_cutoff(nma,100)
-#Construct Partiion function object.
-#pf = PartFun(nma, [ExtTrans(dim=2, mobile=unconst)]) #2D translator surface
-#pf = PartFun(nma_HO_cutoff, []) #Harmonic Oscialltor
-#pf = PartFun(nma, []) #Harmonic Oscialltor
-#S = pf.entropy(300)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
-#print(S)

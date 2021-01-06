@@ -124,8 +124,20 @@ This function returns the enthalpy, heat capacity, Gibb's free energy, chemical 
 and 2D translator entropy.
 '''
 
-def S_HO(Modes_list,nma_obj,T,cutoff):
+def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
     
+    #Calculate 2D translational entropy constrained to adsorption site surface area.
+    CsaZeo = 1/(2E-10*6E-10)#Surface area of zeolite-De Moor et al. 'Ads of C2-C8 n-alkanes in zeolites'
+    S2d_t = R[0]*((np.log((2*pi*mass*kb[0]*T/(h[0]**2))/CsaZeo))+2) # 2D Translational contribution, mol constrained to SA of zeolite.
+    S1d_t = R[0]*((np.log(np.sqrt(2*pi*mass*kb[0]*T/(h[0]**2))/CsaZeo))-(1/2))
+    
+    #Calculate 1D & 2D & 3D rotational contribution. NOTE: must correctly identify which principal moments apply! (i.e cartwheel vs. helicopter rotations)
+    if sno == None:#Symmetry number.
+        sno = 1   
+    S3d_r = R[0]*(np.log(((8*(pi**2)*kb[0]*T/(h[0]**2))**(3/2))*np.sqrt(pi*I[0]*I[1]*I[2])/sno)+(3/2))
+    S2d_r = R[0]*((np.log((8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0]*I[1])/sno))+1)
+    S1d_r = R[0]*(np.log(np.sqrt(8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0])/sno)+(1/2))
+
 
     #Remove translational & rotational frequencies.    
     for i,mode in enumerate(Modes_list):
@@ -141,7 +153,7 @@ def S_HO(Modes_list,nma_obj,T,cutoff):
     pf_vib = PartFun(nma_obj, [])#Construct Harmonic Oscillator partition function.
     
     Svib = pf_vib.entropy(T)*Hartree_2_Joule[0]*Na[0] # Vibrational Entropy [J/mol/K]
-    St = Svib#Total entropy
+    St = Svib + S2d_t #Total entropy
     
     '''
     Testing and Debug
@@ -184,13 +196,13 @@ Shomate parameter function allows us to estimate the enthalpy.-function 'Shomate
 The enthalpy is returned in [kJ/mol]
 
 '''    
-def get_T_corrections(T_range, freqs,Modes_list,nma_obj,T,cutoff,d_points,t0,H0):
+def get_T_corrections(T_range, freqs,Modes_list,nma_obj,T,mass,cutoff,d_points,sno,I,t0,H0):
     T_arr = np.linspace(T_range[0],T_range[-1],num=d_points)#Create Temperature range.
     
     S_dat = []
     #Calculate entropy at each temperature.
     for i,T in enumerate(T_arr):
-        S_dat.append(S_HO(Modes_list,nma_obj,T,cutoff))
+        S_dat.append(S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I))
     
     #initial guess for Shomate_S parameters.
     initparam = (1,1,1,1,1,1)
@@ -251,8 +263,13 @@ if 'ads' in action:
     
     if 'TST' in action:
         Modes[0] = 'TST'
+        Modes[1] = 'trans'
+        Modes[2] = 'trans'
+    else:
+        Modes[0] = 'trans'
+        Modes[1] = 'trans'
     
-    S = S_HO(Modes,nma_HO_cutoff,T,cutoff)#Obtain entropy.
+    S = S_2D_ZSA(Modes,nma_HO_cutoff,T,unconst_mass_sum/1000/Na[0],cutoff,1,unconst_inertia_tensor)#Obtain entropy.
     
    
     
@@ -266,10 +283,10 @@ if 'ads' in action:
     
     t0 = 10 # initial reference temperature for obtaining constant "F" in [K].
     H0 = U0_ZPE
-    RMSE_298, H_298 = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,298.15,cutoff,data_points,10/1000,U0_ZPE)
+    RMSE_298, H_298 = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,298.15,unconst_mass_sum/1000/Na[0],cutoff,data_points,2,unconst_inertia_tensor,10/1000,U0_ZPE)
     
     #We now expand our temperature range to [300,1200] and use T = 298.156 [K] as our reference state.
-    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,cutoff,data_points,298.15/1000,H_298)    
+    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,unconst_mass_sum/1000/Na[0],cutoff,data_points,2,unconst_inertia_tensor,298.15/1000,H_298)    
 
     print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (T,T,T))
     print('%s %s %s %s %s' % (U0,ZPE,H,S,H-T*(S/1000.00)))
@@ -286,4 +303,3 @@ if 'ads' in action:
     #    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,unconst_mass_sum/1000/Na[0],cutoff,data_points)
     #    print('%s, %s, %s %s' % (data_points, Temperature_range[-1],H,RMSE))
         
-
