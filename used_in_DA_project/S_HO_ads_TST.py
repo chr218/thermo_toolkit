@@ -261,15 +261,17 @@ if 'ads' in action:
     '''
     #Here, we solve for the enthalpy of formation from zero [K] to the NIST standard state of 298.15 [K]
     #We approximate the 0 [K] enthalpy to be at 10 [K]; at this temperature H(10 K) ~ (U0 +ZPE)  
-    Temperature_range = [10.0,300.00]#Peng's code used this range.
+    Temperature_range = [10.0,300.0]#Peng's code used this range.
     data_points = 100#also used in Peng's code. 100 data points is sufficient for adequate enthalpy estimation.
     
-    t0 = 10 # initial reference temperature for obtaining constant "F" in [K].
     H0 = U0_ZPE
-    RMSE_298, H_298 = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,298.15,cutoff,data_points,10/1000,U0_ZPE)
-    
+    RMSE_298, H_298 = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,298.15,cutoff,data_points,10.0/1000.0,U0_ZPE)
+   
+    #Now we solve for NIST's standard enthalpy of formation (from reference state of 298.15 K) to T.
+    Temperature_range = [300.0,1200.0]
+ 
     #We now expand our temperature range to [300,1200] and use T = 298.156 [K] as our reference state.
-    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,cutoff,data_points,298.15/1000,H_298)    
+    RMSE, H = get_T_corrections(Temperature_range, nma_HO_cutoff.freqs,Modes,nma_HO_cutoff,T,cutoff,data_points,298.15/1000.0,H_298)    
 
     print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (T,T,T))
     print('%s %s %s %s %s' % (U0,ZPE,H,S,H-T*(S/1000.00)))
