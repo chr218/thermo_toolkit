@@ -21,7 +21,7 @@ of adsorbed molecules/transition states.
 
 #import matplotlib.pyplot as plt
 import numpy as np
-#import sys
+import sys
 
 from tamkin import *
 from molmod import centimeter, lightspeed
@@ -133,7 +133,7 @@ This function returns the enthalpy, heat capacity, Gibb's free energy, chemical 
 and 2D translator entropy.
 '''
 
-def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
+def S_ads(Modes_list,nma_obj,T,mass,cutoff,sno,I):
     
     #Calculate 2D translational entropy constrained to adsorption site surface area.
     CsaZeo = 1/(2E-10*6E-10)#Surface area of zeolite-De Moor et al. 'Ads of C2-C8 n-alkanes in zeolites'
@@ -153,8 +153,6 @@ def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
     for i,mode in enumerate(Modes_list):
         if mode == 'trans' or mode =='TST':#Set modes labelled as 'trans' to 0. They will be omitted from Svib.
             nma_obj.freqs[i] = 0
-        elif mode == 'rot':#To do
-            nma_obj.freqs[i] = 0
         elif mode == 'vib':
             continue
         else:
@@ -163,7 +161,11 @@ def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
     pf_vib = PartFun(nma_obj, [])#Construct Harmonic Oscillator partition function.
     
     Svib = pf_vib.entropy(T)*Hartree_2_Joule[0]*Na[0] # Vibrational Entropy [J/mol/K]
-    St = Svib + S2d_t#Total entropy
+     
+    if '2D' in action:
+        St = Svib + S2d_t
+    elif 'HO' in action:
+        St = Svib
     
     return St
  
@@ -225,11 +227,26 @@ def get_T_corrections(T,T_arr,d_points,S_dat,t0,H0):
 # =============================================================================
 # Program Begins Here
 # =============================================================================
+'''
+Options for "action" variable include:
 
-action = {'gas'}
-more_info = 1
-sno = 4 #Adsorbate Symmetry number.
-T = 298.15 #Temperature [K]
+For gaseous species use "action= {'gas'}"
+For gaseous TST species use "action={'TST','gas'}"
+
+
+For adsorbed species use "action = {'ads'}" in combination with:
+    1) '2D', two-dimensional translator approximation "action={'ads','2D'}"
+    2) 'HO', harmonic oscillator approximation "action={'ads','HO'}"
+For adsorbed species with transition states, simply append 'TST' to action.:
+    "action = {'TST','ads','2D'}" or "action = {'TST','ads','HO'}"
+
+
+'''
+
+action = {'ads','HO'}
+more_info = 0
+sno = 1 #Adsorbate Symmetry number. If not calculating gaseous species or hindered rotor, keep as 1.
+Temperature = 298.15 #Temperature [K]
 
 if 'ads' in action:
     cutoff = 100#Frequency cutoff [cm^-1]
@@ -252,15 +269,22 @@ if 'ads' in action:
     #Organize mode types. Ensure you have visualized modes first!
     Modes_list = len(unconstrained_atom_list)*['vib']
     
+    #Hindered rotor not complete.
     if 'TST' in action:
         Modes_list[0] = 'TST'
-        Modes_list[1] = 'trans'
-        Modes_list[2] = 'trans'
+        if '2D' in action:
+            Modes_list[1] = 'trans'
+            Modes_list[2] = 'trans'
+        elif 'HO' in action:
+            pass
     else:
-        Modes_list[0] = 'trans'
-        Modes_list[1] = 'trans'
+        if '2D' in action:
+            Modes_list[0] = 'trans'
+            Modes_list[1] = 'trans'
+        elif 'HO' in action:
+            pass
     
-    S = S_2D_ZSA(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)#Obtain entropy.
+    S = S_ads(Modes_list,nma_HO_cutoff,Temperature,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)#Obtain entropy.
     
     '''
     Fitting Shomate parameters to calculate enthalpy.
@@ -273,7 +297,7 @@ if 'ads' in action:
     #Calculate entropy across first temperature range.
     S_dat = []
     for i,T in enumerate(T_arr):
-        S_dat.append(S_2D_ZSA(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)) #[J/mol/K]    
+        S_dat.append(S_ads(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)) #[J/mol/K]    
     
     H0 = U0_ZPE
     param_ordered_298, RMSE_298, H_298 = get_T_corrections(298.15,T_arr,d_points,S_dat,10.0/1000.0,H0)
@@ -285,9 +309,9 @@ if 'ads' in action:
     #Calculate entropy across second temperature range.
     S_dat = []
     for i,T in enumerate(T_arr):
-        S_dat.append(S_2D_ZSA(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)) #[J/mol/K]
+        S_dat.append(S_ads(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)) #[J/mol/K]
     
-    param_ordered, RMSE, H = get_T_corrections(T,T_arr,d_points,S_dat,298.15/1000.0,H_298)    
+    param_ordered, RMSE, H = get_T_corrections(Temperature,T_arr,d_points,S_dat,298.15/1000.0,H_298)    
 
 
 if 'gas' in action:
@@ -307,7 +331,7 @@ if 'gas' in action:
     
     #Construct Partition function object. May also manually specify symmetry number. (ie.ExtRot(symmetry_number = 1, im_threshold=1.0))
     pf_gas = PartFun(nma_gas, [ExtTrans(cp=True), ExtRot(symmetry_number = sno ,im_threshold=1.0)])
-    S  = pf_gas.entropy(T)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
+    S  = pf_gas.entropy(Temperature)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
       	 
       
     '''
@@ -336,13 +360,17 @@ if 'gas' in action:
     S_dat = []
     for i,T in enumerate(T_arr):
         S_dat.append(pf_gas.entropy(T)*Hartree_2_Joule[0]*Na[0]) #[J/mol/K]
+
+    param_ordered, RMSE, H = get_T_corrections(Temperature,T_arr,d_points,S_dat,298.15/1000.0,H_298)
     
-    param_ordered, RMSE, H = get_T_corrections(T,T_arr,d_points,S_dat,298.15/1000.0,H_298)  
-    
-    
+    #for x in range(300,1050,50):    
+        #param_ordered, RMSE, H = get_T_corrections(x,T_arr,d_points,S_dat,298.15/1000.0,H_298) 
+        #S = pf_gas.entropy(x)*Hartree_2_Joule[0]*Na[0]
+        #print(x,U0,ZPE,H,S,H-Temperature*(S/1000.0))
+
 #Print Thermo Values
-print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (T,T,T))
-print('%s %s %s %s %s\n' % (U0,ZPE,H,S,H-T*(S/1000.0)))    
+print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (Temperature,Temperature,Temperature))
+print('%s %s %s %s %s\n' % (U0,ZPE,H,S,H-Temperature*(S/1000.0)))    
     
     
 # =============================================================================

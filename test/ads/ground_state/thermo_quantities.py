@@ -21,7 +21,7 @@ of adsorbed molecules/transition states.
 
 #import matplotlib.pyplot as plt
 import numpy as np
-#import sys
+import sys
 
 from tamkin import *
 from molmod import centimeter, lightspeed
@@ -65,7 +65,7 @@ def get_U0(freqs):
     
     with open('OSZICAR_relax','r') as f:
         last_line = f.readlines()[-1]
-    U0 = float(last_line.split()[4])*ev[0]*Na[0]/1000
+    U0 = float(last_line.split()[4])*ev[0]*Na[0]/1000    
 
     ZPE = 0
     for freq in freqs:
@@ -166,6 +166,24 @@ def S_2D_ZSA(Modes_list,nma_obj,T,mass,cutoff,sno,I):
     St = Svib + S2d_t#Total entropy
     
     return St
+
+def S_HO(Modes_list,nma_obj,T,mass,cutoff,sno,I):
+    
+    #Remove translational & rotational frequencies.    
+    for i,mode in enumerate(Modes_list):
+        if  mode =='TST':#Set modes labelled as 'trans' to 0. They will be omitted from Svib.
+            nma_obj.freqs[i] = 0
+        elif mode == 'vib':
+            continue
+        else:
+            print('Error: Unknown mode type within Modes_list object.') 
+        
+    pf_vib = PartFun(nma_obj, [])#Construct Harmonic Oscillator partition function.
+    
+    Svib = pf_vib.entropy(T)*Hartree_2_Joule[0]*Na[0] # Vibrational Entropy [J/mol/K]
+    St = Svib#Total entropy
+    
+    return St
  
 
 def Shomate_S(param,T,S_data):
@@ -228,8 +246,8 @@ def get_T_corrections(T,T_arr,d_points,S_dat,t0,H0):
 
 action = {'ads'}
 more_info = 0
-sno = 4 #Adsorbate Symmetry number.
-T = 298.15 #Temperature [K]
+sno = 1 #Adsorbate Symmetry number.
+Temperature = 298.15 #Temperature [K]
 
 if 'ads' in action:
     cutoff = 100#Frequency cutoff [cm^-1]
@@ -260,7 +278,7 @@ if 'ads' in action:
         Modes_list[0] = 'trans'
         Modes_list[1] = 'trans'
     
-    S = S_2D_ZSA(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)#Obtain entropy.
+    S = S_2D_ZSA(Modes_list,nma_HO_cutoff,Temperature,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)#Obtain entropy.
     
     '''
     Fitting Shomate parameters to calculate enthalpy.
@@ -287,7 +305,7 @@ if 'ads' in action:
     for i,T in enumerate(T_arr):
         S_dat.append(S_2D_ZSA(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)) #[J/mol/K]
     
-    param_ordered, RMSE, H = get_T_corrections(T,T_arr,d_points,S_dat,298.15/1000.0,H_298)    
+    param_ordered, RMSE, H = get_T_corrections(Temperature,T_arr,d_points,S_dat,298.15/1000.0,H_298)    
 
 
 if 'gas' in action:
@@ -307,7 +325,7 @@ if 'gas' in action:
     
     #Construct Partition function object. May also manually specify symmetry number. (ie.ExtRot(symmetry_number = 1, im_threshold=1.0))
     pf_gas = PartFun(nma_gas, [ExtTrans(cp=True), ExtRot(symmetry_number = sno ,im_threshold=1.0)])
-    S  = pf_gas.entropy(T)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
+    S  = pf_gas.entropy(Temperature)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
       	 
       
     '''
@@ -336,13 +354,17 @@ if 'gas' in action:
     S_dat = []
     for i,T in enumerate(T_arr):
         S_dat.append(pf_gas.entropy(T)*Hartree_2_Joule[0]*Na[0]) #[J/mol/K]
+
+    param_ordered, RMSE, H = get_T_corrections(Temperature,T_arr,d_points,S_dat,298.15/1000.0,H_298)
     
-    param_ordered, RMSE, H = get_T_corrections(T,T_arr,d_points,S_dat,298.15/1000.0,H_298)  
-    
-    
+    #for x in range(300,1050,50):    
+        #param_ordered, RMSE, H = get_T_corrections(x,T_arr,d_points,S_dat,298.15/1000.0,H_298) 
+        #S = pf_gas.entropy(x)*Hartree_2_Joule[0]*Na[0]
+        #print(x,U0,ZPE,H,S,H-Temperature*(S/1000.0))
+
 #Print Thermo Values
-print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (T,T,T))
-print('%s %s %s %s %s\n' % (U0,ZPE,H,S,H-T*(S/1000.0)))    
+print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (Temperature,Temperature,Temperature))
+print('%s %s %s %s %s\n' % (U0,ZPE,H,S,H-Temperature*(S/1000.0)))    
     
     
 # =============================================================================

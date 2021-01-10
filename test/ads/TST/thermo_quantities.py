@@ -8,8 +8,7 @@ adsorbate & transition states within their ideal-gas/adsorbed states.
 This code is based off of "Peng's" code.
 
 The necessary input files are VASP
-'OSZICAR' from the relaxation, 'OUTCAR' from the frequecy calculations
- and 'CONTCAR'.
+'OUTCAR' and 'CONTCAR'.
 
 The user is given the choice of approximations for calculating the entropy
 of adsorbed molecules/transition states. 
@@ -63,10 +62,10 @@ Ensure that you are parsing the correct OUTCAR!
 
 '''
 def get_U0(freqs):
-   
+    
     with open('OSZICAR_relax','r') as f:
         last_line = f.readlines()[-1]
-    U0 = float(last_line.split()[4])*ev[0]*Na[0]/1000
+    U0 = float(last_line.split()[4])*ev[0]*Na[0]/1000    
 
     ZPE = 0
     for freq in freqs:
@@ -230,7 +229,7 @@ def get_T_corrections(T,T_arr,d_points,S_dat,t0,H0):
 action = {'ads','TST'}
 more_info = 0
 sno = 1 #Adsorbate Symmetry number.
-T = 298.15 #Temperature [K]
+Temperature = 298.15 #Temperature [K]
 
 if 'ads' in action:
     cutoff = 100#Frequency cutoff [cm^-1]
@@ -261,7 +260,7 @@ if 'ads' in action:
         Modes_list[0] = 'trans'
         Modes_list[1] = 'trans'
     
-    S = S_2D_ZSA(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)#Obtain entropy.
+    S = S_2D_ZSA(Modes_list,nma_HO_cutoff,Temperature,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)#Obtain entropy.
     
     '''
     Fitting Shomate parameters to calculate enthalpy.
@@ -288,7 +287,7 @@ if 'ads' in action:
     for i,T in enumerate(T_arr):
         S_dat.append(S_2D_ZSA(Modes_list,nma_HO_cutoff,T,(unconst_mass_sum/1000/Na[0]),cutoff,sno,unconst_inertia_tensor)) #[J/mol/K]
     
-    param_ordered, RMSE, H = get_T_corrections(T,T_arr,d_points,S_dat,298.15/1000.0,H_298)    
+    param_ordered, RMSE, H = get_T_corrections(Temperature,T_arr,d_points,S_dat,298.15/1000.0,H_298)    
 
 
 if 'gas' in action:
@@ -308,7 +307,7 @@ if 'gas' in action:
     
     #Construct Partition function object. May also manually specify symmetry number. (ie.ExtRot(symmetry_number = 1, im_threshold=1.0))
     pf_gas = PartFun(nma_gas, [ExtTrans(cp=True), ExtRot(symmetry_number = sno ,im_threshold=1.0)])
-    S  = pf_gas.entropy(T)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
+    S  = pf_gas.entropy(Temperature)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
       	 
       
     '''
@@ -337,13 +336,17 @@ if 'gas' in action:
     S_dat = []
     for i,T in enumerate(T_arr):
         S_dat.append(pf_gas.entropy(T)*Hartree_2_Joule[0]*Na[0]) #[J/mol/K]
+
+    param_ordered, RMSE, H = get_T_corrections(Temperature,T_arr,d_points,S_dat,298.15/1000.0,H_298)
     
-    param_ordered, RMSE, H = get_T_corrections(T,T_arr,d_points,S_dat,298.15/1000.0,H_298)  
-    
-    
+    #for x in range(300,1050,50):    
+        #param_ordered, RMSE, H = get_T_corrections(x,T_arr,d_points,S_dat,298.15/1000.0,H_298) 
+        #S = pf_gas.entropy(x)*Hartree_2_Joule[0]*Na[0]
+        #print(x,U0,ZPE,H,S,H-Temperature*(S/1000.0))
+
 #Print Thermo Values
-print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (T,T,T))
-print('%s %s %s %s %s\n' % (U0,ZPE,H,S,H-T*(S/1000.0)))    
+print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (Temperature,Temperature,Temperature))
+print('%s %s %s %s %s\n' % (U0,ZPE,H,S,H-Temperature*(S/1000.0)))    
     
     
 # =============================================================================
