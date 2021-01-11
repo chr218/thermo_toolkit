@@ -243,7 +243,7 @@ For adsorbed species with transition states, simply append 'TST' to action.:
 
 '''
 
-action = {'ads','HO'}
+action = {'ads','2D'}
 more_info = 0
 sno = 1 #Adsorbate Symmetry number. If not calculating gaseous species or hindered rotor, keep as 1.
 Temperature = 298.15 #Temperature [K]
@@ -369,8 +369,8 @@ if 'gas' in action:
         #print(x,U0,ZPE,H,S,H-Temperature*(S/1000.0))
 
 #Print Thermo Values
-print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (Temperature,Temperature,Temperature))
-print('%s %s %s %s %s\n' % (U0,ZPE,H,S,H-Temperature*(S/1000.0)))    
+#print('E [kJ/mol], ZPE [kJ/mol], H@%s [kJ/mol], S@%s [J/mol/K], G@%s [kJ/mol]' % (Temperature,Temperature,Temperature))
+print('%s %s %s %s %s' % (U0,ZPE,H,S,H-Temperature*(S/1000.0)))    
     
     
 # =============================================================================
