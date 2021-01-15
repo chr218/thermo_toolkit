@@ -144,9 +144,9 @@ def S_ads(Modes_list,nma_obj,T,mass,cutoff,sno,I):
     if sno == None:#Symmetry number.
         print('Warning: Unspecified symmetry number.')
         sno = 1   
-    S3d_r = R[0]*(np.log(((8*(pi**2)*kb[0]*T/(h[0]**2))**(3/2))*np.sqrt(pi*I[0]*I[1]*I[2])/sno)+(3/2))
-    S2d_r = R[0]*((np.log((8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0]*I[1])/sno))+1)
-    S1d_r = R[0]*(np.log(np.sqrt(8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0])/sno)+(1/2))
+    #S3d_r = R[0]*(np.log(((8*(pi**2)*kb[0]*T/(h[0]**2))**(3/2))*np.sqrt(pi*I[0]*I[1]*I[2])/sno)+(3/2))
+    #S2d_r = R[0]*((np.log((8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0]*I[1])/sno))+1)
+    #S1d_r = R[0]*(np.log(np.sqrt(8*(pi**2)*kb[0]*T/(h[0]**2))*np.sqrt(pi*I[0])/sno)+(1/2))
 
 
     #Remove translational & rotational frequencies.    
@@ -243,7 +243,7 @@ For adsorbed species with transition states, simply append 'TST' to action.:
 
 '''
 
-action = {'ads','2D'}
+action = {'ads','HO'}
 more_info = 0
 sno = 1 #Adsorbate Symmetry number. If not calculating gaseous species or hindered rotor, keep as 1.
 Temperature = 298.15 #Temperature [K]
@@ -289,7 +289,7 @@ if 'ads' in action:
     '''
     Fitting Shomate parameters to calculate enthalpy.
     '''
-    T_range = [10.0,350.00]#Peng's code used this range.
+    T_range = [10.0,300.00]#Peng's code used this range.
     d_points = 100#also used in Peng's code. 100 data points is sufficient for adequate enthalpy estimation.
     T_arr = np.linspace(T_range[0],T_range[-1],num=d_points)#Create Temperature range.
 
@@ -304,8 +304,10 @@ if 'ads' in action:
     
     #Now we solve for NIST's standard enthalpy of formation (from reference state of 298.15 K) to T.
     #We now expand our temperature range to [300,1200] and use T = 298.156 [K] as our reference state.
-    Temperature_range = [300.0,1200.0]
-    
+    T_range = [300.0,1200.0]
+    d_points = 100#also used in Peng's code. 100 data points is sufficient for adequate enthalpy estimation.
+    T_arr = np.linspace(T_range[0],T_range[-1],num=d_points)#Create Temperature range.   
+ 
     #Calculate entropy across second temperature range.
     S_dat = []
     for i,T in enumerate(T_arr):
@@ -339,7 +341,7 @@ if 'gas' in action:
     '''
     #Here, we solve for the enthalpy of formation from zero [K] to the NIST standard state of 298.15 [K]
     #We approximate the 0 [K] enthalpy to be at 10 [K]; at this temperature H(10 K) ~ (U0 +ZPE)  
-    T_range = [10.0,350.00]#Peng's code used this range.
+    T_range = [10.0,300.00]#Peng's code used this range.
     d_points = 100#also used in Peng's code. 100 data points is sufficient for adequate enthalpy estimation.
     T_arr = np.linspace(T_range[0],T_range[-1],num=d_points)#Create Temperature range.
     
