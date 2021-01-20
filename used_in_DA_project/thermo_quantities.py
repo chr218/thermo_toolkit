@@ -247,10 +247,9 @@ action = {'ads','HO'}
 more_info = 0
 sno = 1 #Adsorbate Symmetry number. If not calculating gaseous species or hindered rotor, keep as 1.
 Temperature = 298.15 #Temperature [K]
+cutoff = 100#Frequency cutoff [cm^-1]
 
-if 'ads' in action:
-    cutoff = 100#Frequency cutoff [cm^-1]
-       
+if 'ads' in action:       
     #Construct ASE molecule object to pull freqs.
     mol = io.vasp.load_molecule_vasp('CONTCAR','OUTCAR')
     
@@ -321,19 +320,26 @@ if 'gas' in action:
     #Construst ASE Atom object. For periodic systems (i.e VASP), must manually disable periodicity.
     mol_gas = io.vasp.load_molecule_vasp("CONTCAR", "OUTCAR").copy_with(periodic=False)
     
-    #Construct TAMkin NMA object. "im_threshold" determines if the molecule is linear or not. If one of the moments of inertia drops below this number, the molecule is considered to be linear.
-    nma_gas = NMA(mol_gas, Full(im_threshold=10.0))
+    #Construct TAMkin NMA object.
+    # "ConstrainExt()" specifies that the normal mode analysis must be performed in 3N-6 (or 3N-5) internal coordinates.- Please double check if it correctly categorized your molecule as linear or not! 
+    # The method only gives the correct result when the geometry is sufficiently optimized, i.e. when the gradient of the energy is approximately zero. 
+    #This condition will be checked by comparing the maximum absolute value of the gradient vector with a threshold value: "gradient_threshold" 
+    #"im_threshold" determines if the molecule is linear or not. If one of the moments of inertia drops below this number, the molecule is considered to be linear.
+    nma_gas = NMA(mol_gas, ConstrainExt(gradient_threshold=0.01, im_threshold=1.0))
     
     #Remove freq corresponding to bond formation. (We already account for this in TST frequency factor "kBT/h")
     if 'TST' in action:
         nma_gas.freqs[0] = 0 #Visually inspect that this mode corresponds to the TST. i.e bond formation/breakage!!!
 
+    nma_gas_cutoff = replace_freq_cutoff(nma_gas,cutoff)#Replace internal coordinate wavenumbers w/ cutoff.
+
     #Collect Ground State DFT energy & ZPE energy.
-    U0, ZPE, U0_ZPE = get_U0(nma_gas.freqs) 
+    U0, ZPE, U0_ZPE = get_U0(nma_gas_cutoff.freqs) 
     
     #Construct Partition function object. May also manually specify symmetry number. (ie.ExtRot(symmetry_number = 1, im_threshold=1.0))
-    pf_gas = PartFun(nma_gas, [ExtTrans(cp=True), ExtRot(symmetry_number = sno ,im_threshold=1.0)])
-    S  = pf_gas.entropy(Temperature)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
+    # "The ExtTrans" and "ExtRot" include the translational and rotational contributions to the partition function.
+    pf_gas = PartFun(nma_gas_cutoff, [ExtTrans(cp=True), ExtRot(symmetry_number = sno ,im_threshold=1.0)])
+    S = pf_gas.entropy(Temperature)*Hartree_2_Joule[0]*Na[0] #[J/mol/K]
       	 
       
     '''
